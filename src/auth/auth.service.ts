@@ -1,67 +1,110 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException  } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service';
-import * as bcrypt from 'bcrypt';
-import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+
+import { AuthRegisterDTO } from "./dto/auth-register.dto";
+import { UserService } from "src/users/users.service";
+import * as bcrypt from "bcrypt";
+import { User } from "src/users/user.model";
+import { InjectModel } from "@nestjs/sequelize";
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private usersService: UsersService,
-    private jwtService: JwtService,
-  ) {}
 
-  async validateUser(email: string, password: string): Promise<any> {
-    // Use raw: false para obter a instância do modelo completo
-    const user = await this.usersService.findByEmail(email);
-    
-    if (!user) {
-      throw new UnauthorizedException('Credenciais inválidas');
+    private issuer = 'login';
+    private audience = 'users';
+
+    constructor (
+        private readonly jwtService: JwtService,
+        private readonly userService: UserService,
+        @InjectModel(User)
+        private userModel: typeof User,
+        ){}
+
+    createToken(user: User){
+        return {
+            accessToken: this.jwtService.sign({
+                id: user.id,
+                name: user.name,
+                email: user.email
+            },
+            {
+                expiresIn: "7 days",
+                subject: String(user.id),
+                issuer: this.issuer,
+                audience: this.audience
+            })
+        }
+    }
+    checkToken(token: string){
+        try{
+            const data = this.jwtService.verify(token,{
+                issuer: this.issuer,
+                audience: this.audience
+            });
+            return data;
+        }catch(err){
+            throw new BadRequestException(err);
+        }
     }
 
-    // Acesse a senha corretamente
-    const userPassword = user.getDataValue('password');
-    
-    if (!userPassword) {
-      throw new UnauthorizedException('Senha não configurada para este usuário');
+    isValidToken(token: string){
+        try{
+            this.checkToken(token);
+            return true;
+        }catch(er){
+            return false;
+        }
     }
 
-    const isPasswordValid = await bcrypt.compare(password, userPassword);
-    
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Credenciais inválidas');
+    async login(email: string, password: string){
+        const user = await this.userModel.findOne({
+            where: {email}
+        });
+
+        if(!user){
+            throw new UnauthorizedException('E-mail e/ou senha incorretos.');
+        }
+
+        if(!await bcrypt.compare(password,user.password)){
+            throw new UnauthorizedException('E-mail e/ou senha incorretos.');
+        }
+
+        return this.createToken(user);
     }
 
-    // Retorna o usuário sem a senha
-    const userPlain = user.get({ plain: true });
-    const { password: _, ...result } = userPlain;
-    return result;
-  }
+    async forget(email: string){
+        const user = await this.userModel.findOne({
+            where: {email}
+        });
 
-  async login(user: any) {
-    const payload = { email: user.email, sub: user.id };
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
-  }
+        if(!user){
+            throw new UnauthorizedException('E-mail está incorreto.');
+            
+        }
 
-  async register(createUserDto: CreateUserDto) {
-    const existingUser = await this.usersService.findByEmail(createUserDto.email);
-    if (existingUser) {
-      throw new ConflictException('Email já cadastrado');
+        //Enviar email
+        return true;
     }
 
-    // Hash da senha com salt
-    const salt = await bcrypt.genSalt();
-    const hashedPassword = await bcrypt.hash(createUserDto.password, salt);
+    async reset(password: string, token: string){
+        // Validar o token
+        const id = 0;
 
-    const newUser = await this.usersService.create({
-      ...createUserDto,
-      password: hashedPassword,
-    });
+        await this.userModel.update(
+            { password },
+            { where: { id } }
+        );
+        const user = await this.userModel.findByPk(id);
+        if(!user){
+            throw new UnauthorizedException('Token inválido.'); 
+        }
+        return this.createToken(user);
+    }
 
-    // Garantindo que a senha não será retornada
-    const { password, ...result } = newUser.get({ plain: true });
-    return result;
-  }
+    async register(data: AuthRegisterDTO){
+
+        const user =  await this.userService.create(data);
+
+        return this.createToken(user);
+    }
 }

@@ -1,24 +1,51 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { User } from './user.model';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, UseGuards, UseInterceptors } from "@nestjs/common";
 
+import { Role } from "src/enums/role.enum";
+import { RoleGuard } from "../guards/role.guards";
+import { AuthGuard } from "../guards/auth.guards";
+import { SkipThrottle } from "@nestjs/throttler";
+import { CreateUserDTO, UpdatePatchUserDTO, UpdatePutUserDTO } from "./dto";
+import { ParamId, Roles } from "src/decorators";
+import { UserService } from "./users.service";
+
+
+@Roles(Role.Admin)
+@UseGuards(AuthGuard,RoleGuard)
 @Controller('users')
-export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+export class UserController {
 
-  @Post()
-  create(@Body() createUserDto: CreateUserDto): Promise<User> {
-    return this.usersService.create(createUserDto);
-  }
+    constructor(private readonly userService: UserService){}
 
-  @Get()
-  findAll(): Promise<User[]> {
-    return this.usersService.findAll();
-  }
+    @Post()
+    async create(@Body() data: CreateUserDTO){
+        console.log(data);
+        return await this.userService.create(data);
+    }
 
-  @Get(':id')
-  findOne(@Param('id') id: string): Promise<User | null> {
-    return this.usersService.findOne(+id);
-  }
+    @SkipThrottle()
+    @Roles(Role.User)
+    @Get()
+    async list(){
+        return await this.userService.list();
+    }
+
+    @Get(':id')
+    async show(@ParamId() id: number){
+        return await this.userService.show(id);
+    }
+
+    @Put(':id')
+    async update(@Body() data: UpdatePutUserDTO,@Param('id',ParseIntPipe) id: number){
+        return this.userService.update(id,data);
+    }
+
+    @Patch(':id')
+    async updatePartial(@Body() data: UpdatePatchUserDTO, @Param('id',ParseIntPipe) id: number){
+        return this.userService.updatePartial(id,data);
+    }
+
+    @Delete(':id')
+    async delete(@Param('id',ParseIntPipe) id: number){
+        return await this.userService.delete(id);
+    }
 }

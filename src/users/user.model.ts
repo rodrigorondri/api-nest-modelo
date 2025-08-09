@@ -1,25 +1,19 @@
 import { Table, Column, Model, DataType } from 'sequelize-typescript';
+import { BaseModel } from 'src/database/base.model';
 
-export interface UserAttributes {
-  id?: number;
-  name: string;
-  email: string;
-  password: string;
-}
-
-export interface UserCreationAttributes extends Omit<UserAttributes, 'id'> {}
 
 @Table({
+  schema: 'public',
   tableName: 'users',
-  timestamps: false, // ou false conforme sua necessidade
+  timestamps: true,
 })
-export class User extends Model<UserAttributes, UserCreationAttributes> {
+export class User extends BaseModel {
   @Column({
     type: DataType.INTEGER,
     primaryKey: true,
     autoIncrement: true,
   })
-  declare id: number; // Usando declare para propriedades herdadas
+  declare id: number;
 
   @Column({
     type: DataType.STRING,
@@ -39,4 +33,16 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
     allowNull: false,
   })
   declare password: string;
+
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  })
+  declare role: number;
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  declare birthAt?: Date | null;
 }
